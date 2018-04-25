@@ -33,9 +33,9 @@ class TestParsePattern(unittest.TestCase):
             pattern_search.MultipleAmino('[AB]')
         with self.assertRaisesRegex(ValueError, 'Brackets do not match'):  # TODO: better error message...
             pattern_search.MultipleAmino('[AC]A')
-        with self.assertRaisesRegex(ValueError, 'Invalid string for MultipleAmino'):
+        with self.assertRaisesRegex(ValueError, 'Brackets do not match'):
             pattern_search.MultipleAmino('{AC]')
-        with self.assertRaisesRegex(ValueError, 'Invalid string for MultipleAmino'):
+        with self.assertRaisesRegex(ValueError, 'No valid options provided'):
             pattern_search.MultipleAmino('[]')
 
     def test_negated_amino(self):
@@ -47,9 +47,9 @@ class TestParsePattern(unittest.TestCase):
             pattern_search.NegatedAmino('{AB}')
         with self.assertRaisesRegex(ValueError, 'Brackets do not match'):
             pattern_search.NegatedAmino('{AC}A')
-        with self.assertRaisesRegex(ValueError, 'Invalid string for NegatedAmino'):
+        with self.assertRaisesRegex(ValueError, 'Brackets do not match'):
             pattern_search.NegatedAmino('[AC}')
-        with self.assertRaisesRegex(ValueError, 'Invalid string for NegatedAmino'):
+        with self.assertRaisesRegex(ValueError, 'No valid options provided'):
             pattern_search.NegatedAmino('{}')
 
     def test_multiple_repeats(self):

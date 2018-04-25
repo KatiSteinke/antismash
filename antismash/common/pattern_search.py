@@ -5,7 +5,7 @@
     acid sequence.
 """
 
-from typing import List, Set
+from typing import List, Set, Tuple
 
 AMINOS = {'A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'V', 'W', 'Y'}
 
@@ -57,29 +57,7 @@ class AnyAmino(Element):
 
 class MultipleAmino(Element):
     def __init__(self, element: str) -> None:
-        self.options = set()  # type: Set[str]
-        length = len(element)
-
-        if length < 3:
-            raise ValueError('Invalid string for MultipleAmino')
-
-        if element[0] != "[":
-            raise ValueError('Invalid string for MultipleAmino')
-
-        idx = 1
-        while idx < length:
-            char = element[idx]
-            if char in AMINOS:
-                self.options.add(char)
-            elif char == "]":
-                break
-            else:
-                raise ValueError('Invalid amino acid')
-            idx += 1
-
-        if idx == length:
-            raise ValueError('Brackets do not match')
-        self.repeats = parse_repeats(element[idx+1:])
+        self.options, self.repeats = parse_options(element, "[", "]")
 
     def match(self, sequence: str) -> Match:
         if not len(sequence) >= self.repeats:
@@ -89,29 +67,7 @@ class MultipleAmino(Element):
 
 class NegatedAmino(Element):
     def __init__(self, element: str) -> None:
-        self.options = set()  # type: Set[str]
-        length = len(element)
-
-        if length < 3:
-            raise ValueError('Invalid string for NegatedAmino')
-
-        if element[0] != "{":
-            raise ValueError('Invalid string for NegatedAmino')
-
-        idx = 1
-        while idx < length:
-            char = element[idx]
-            if char in AMINOS:
-                self.options.add(char)
-            elif char == "}":
-                break
-            else:
-                raise ValueError('Invalid amino acid')
-            idx += 1
-
-        if idx == length:
-            raise ValueError('Brackets do not match')
-        self.repeats = parse_repeats(element[idx+1:])
+        self.options, self.repeats = parse_options(element, "{", "}")
 
     def match(self, sequence: str) -> Match:
         if not len(sequence) >= self.repeats:
@@ -170,3 +126,21 @@ def parse_repeats(sequence: str) -> int:
     if not sequence.startswith("(") or not sequence.endswith(")"):
         raise ValueError("Brackets do not match")
     return int(sequence[1:-1])
+
+
+def parse_options(sequence: str, start: str, end: str) -> Tuple[Set[str], int]:
+    if sequence[0] != start:
+        raise ValueError("Brackets do not match")
+    options = set()  # type: Set[str]
+    idx = 1
+    while idx < len(sequence) and sequence[idx] != end:
+        if sequence[idx] not in AMINOS:
+            raise ValueError("Invalid amino acid")
+        options.add(sequence[idx])
+        idx += 1
+    if idx == len(sequence):
+        raise ValueError("Brackets do not match")
+    repeats = parse_repeats(sequence[idx+1:])
+    if not options:
+        raise ValueError("No valid options provided")
+    return options, repeats
