@@ -1,18 +1,34 @@
 # License: GNU Affero General Public License v3 or later
 # A copy of GNU AGPL v3 should have been included in this software package in LICENSE.txt.
 
-"""A collection of functions for parsing protein motif patterns of a defined format and searching for them.
+"""A collection of functions for parsing protein motif patterns of a defined format and searching for them in an amino
+    acid sequence.
 """
 
-from typing import List
-
-# result classes: base class? Check validity of input in init! Then only check type of element later
+from typing import List, Set
 
 AMINOS = {'A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'V', 'W', 'Y'}
 
 
+class Match:
+    def __init__(self, hit: bool, distance: int = -1) -> None:
+        self.hit = hit
+        if hit:
+            assert distance > -1
+        self._distance = distance
+
+    @property
+    def distance(self) -> int:
+        if not self.hit:
+            raise ValueError('Cannot access distance without a match')
+        return self._distance
+
+    def __bool__(self) -> bool:
+        return self.hit
+
 class Element:
-    pass
+    def match(self, sequence: str) -> Match:
+        raise NotImplementedError('Missing match implementation')
 
 
 class SimpleAmino(Element):
@@ -20,20 +36,28 @@ class SimpleAmino(Element):
         if element not in AMINOS:
             raise ValueError('Invalid amino acid')
         self.element = element
+        self.repeats = 1
 
-    def match(self, sequence: str) -> bool:
-        return sequence[0] == self.element
+    def match(self, sequence: str) -> Match:
+        if not len(sequence) >= self.repeats:
+            return Match(False)
+        return Match(sequence[0] == self.element, self.repeats)
 
 
 class AnyAmino(Element):
     def __init__(self, element: str) -> None:
-        if element != 'x':
+        if element[0] != 'x':
             raise ValueError('Attempting to use defined amino acid as AnyAmino')
+        self.repeats = parse_repeats(element[1:])
+
+    def match(self, sequence: str) -> Match:
+        # TODO: should invalid amino be an error?
+        return Match(len(sequence) >= self.repeats, self.repeats)
 
 
 class MultipleAmino(Element):
     def __init__(self, element: str) -> None:
-        self.element = set()
+        self.options = set()  # type: Set[str]
         length = len(element)
 
         if length < 3:
@@ -46,7 +70,7 @@ class MultipleAmino(Element):
         while idx < length:
             char = element[idx]
             if char in AMINOS:
-                self.element.add(char)
+                self.options.add(char)
             elif char == "]":
                 break
             else:
@@ -55,13 +79,17 @@ class MultipleAmino(Element):
 
         if idx == length:
             raise ValueError('Brackets do not match')
-        if idx < length - 1:
-            raise ValueError('Invalid string for MultipleAmino')
+        self.repeats = parse_repeats(element[idx+1:])
+
+    def match(self, sequence: str) -> Match:
+        if not len(sequence) >= self.repeats:
+            return Match(False)
+        return Match(set(sequence[:self.repeats]).issubset(self.options), self.repeats)
 
 
 class NegatedAmino(Element):
     def __init__(self, element: str) -> None:
-        self.element = set()
+        self.options = set()  # type: Set[str]
         length = len(element)
 
         if length < 3:
@@ -74,7 +102,7 @@ class NegatedAmino(Element):
         while idx < length:
             char = element[idx]
             if char in AMINOS:
-                self.element.add(char)
+                self.options.add(char)
             elif char == "}":
                 break
             else:
@@ -83,13 +111,17 @@ class NegatedAmino(Element):
 
         if idx == length:
             raise ValueError('Brackets do not match')
-        if idx < length - 1:
-            raise ValueError('Invalid string for NegatedAmino')
+        self.repeats = parse_repeats(element[idx+1:])
+
+    def match(self, sequence: str) -> Match:
+        if not len(sequence) >= self.repeats:
+            return Match(False)
+        return Match(set(sequence[:self.repeats]).isdisjoint(self.options), self.repeats)
 
 
 class Pattern:
     def __init__(self, pattern_string: str) -> None:
-        self.elements = []
+        self.elements = []  # type: List[Element]
         for part in pattern_string.split('-'):
             if part[0] in AMINOS:
                 self.elements.append(SimpleAmino(part))
@@ -112,7 +144,9 @@ class Pattern:
             for element in self.elements:
                 match = element.match(sequence[idx:])
                 matches = matches and match
-                idx += 1
+                if not match:
+                    break
+                idx += match.distance
             if matches:
                 return anchor_idx
             anchor_idx = self.find_anchor(sequence, anchor_idx+1)
@@ -128,3 +162,11 @@ class Pattern:
                 return idx
             idx += 1
         return -1
+
+
+def parse_repeats(sequence: str) -> int:
+    if not sequence:
+        return 1
+    if not sequence.startswith("(") or not sequence.endswith(")"):
+        raise ValueError("Brackets do not match")
+    return int(sequence[1:-1])
