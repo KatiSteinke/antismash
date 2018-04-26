@@ -13,7 +13,7 @@ class TestParsePattern(unittest.TestCase):
 
     def test_simple_amino(self):
         simple_result = pattern_search.SimpleAmino('A')
-        assert simple_result.element == 'A'
+        assert simple_result.amino == 'A'
         with self.assertRaisesRegex(ValueError, 'Invalid amino acid'):
             pattern_search.SimpleAmino('B')
         assert simple_result.match('A')
@@ -54,26 +54,9 @@ class TestParsePattern(unittest.TestCase):
 
     def test_multiple_repeats(self):
         result = pattern_search.MultipleAmino('[AT](2)')
-        assert result.repeats == 2
+        assert result.min_repeats == 2
         result = pattern_search.MultipleAmino('[AT](24)')
-        assert result.repeats == 24
-
-
-    def test_pattern(self):
-        result = pattern_search.Pattern('A')
-        self.assertIsInstance(result.elements[0], pattern_search.SimpleAmino)
-
-        result = pattern_search.Pattern('A-C')
-        assert len(result.elements) == 2
-
-        result = pattern_search.Pattern('x')
-        self.assertIsInstance(result.elements[0], pattern_search.AnyAmino)
-
-        result = pattern_search.Pattern('[AC]')
-        self.assertIsInstance(result.elements[0], pattern_search.MultipleAmino)
-
-        result = pattern_search.Pattern('{AC}')
-        self.assertIsInstance(result.elements[0], pattern_search.NegatedAmino)
+        assert result.min_repeats == 24
 
     def test_invalid_pattern(self):
         with self.assertRaises(ValueError):
@@ -100,33 +83,27 @@ class TestParsePattern(unittest.TestCase):
 
         assert pattern.find('') == -1
 
-    def test_find_anchor(self):
-        sequence = 'MAGICHAT'
-        pattern = pattern_search.Pattern('Y')
-        assert pattern.find_anchor(sequence) == -1
-
-        pattern = pattern_search.Pattern('A')
-        assert pattern.find_anchor(sequence) == 1
-        assert pattern.find_anchor(sequence, 2) == 6
-        assert pattern.find_anchor(sequence, 7) == -1
-        # test out of bounds value
-        assert pattern.find_anchor(sequence, 12) == -1
-        # test searching from the end
-        assert pattern.find_anchor(sequence, -3) == 6
-        assert pattern.find_anchor(sequence, -1) == -1
-
     def test_find_any(self):
         sequence = 'MAGICHAT'
         pattern = pattern_search.Pattern('x')
         assert pattern.find(sequence) == 0
 
+    def test_find_single_then_any(self):
+        sequence = 'MAGICHAT'
+        pattern = pattern_search.Pattern('M-x')
+        assert pattern.find('M') == -1
+        assert pattern.find('') == -1
+        assert pattern.find('AM') == -1
+        assert pattern.find(sequence) == 0
+
     def test_find_any_combos(self):
         sequence = 'MAGICHAT'
         pattern = pattern_search.Pattern('x-A')
-        assert pattern.find(sequence) == 0
         assert pattern.find('A') == -1
         assert pattern.find('') == -1
         assert pattern.find('AC') == -1
+        assert pattern.find(sequence) == 0
+
 
         # three-letter combinations:
         pattern = pattern_search.Pattern('x-A-x')
@@ -181,3 +158,55 @@ class TestParsePattern(unittest.TestCase):
         pattern = pattern_search.Pattern('{A}(3)')
         assert pattern.find('BB') == -1
 
+    def test_find_range(self):
+        sequence = 'MYKITTYYYY'
+
+        pattern = pattern_search.Pattern('Y(1,2)')
+        assert pattern.find(sequence) == 1
+
+        pattern = pattern_search.Pattern('Y(2,4)')
+        assert pattern.find(sequence) == 6
+
+        pattern = pattern_search.Pattern('T(2,3)-Y')
+        assert pattern.find(sequence) == 4
+
+        pattern = pattern_search.Pattern('[TY](2,3)')
+        assert pattern.find(sequence) == 4
+
+        pattern = pattern_search.Pattern('{MY}(2,3)')
+        assert pattern.find(sequence) == 2
+
+        pattern = pattern_search.Pattern('x(2,3)')
+        assert pattern.find(sequence) == 0
+
+        pattern = pattern_search.Pattern('T-Y(0,1)')
+        assert pattern.find(sequence) == 4
+
+        pattern = pattern_search.Pattern('K-Y(0,1)-I')
+        assert pattern.find(sequence) == 2
+
+        pattern = pattern_search.Pattern('K-x(0,1)-I')
+        assert pattern.find(sequence) == 2
+
+    def test_parse_repeats(self):
+        assert pattern_search.parse_repeats('') == (1, 1)
+        assert pattern_search.parse_repeats('(5)') == (5, 5)
+        assert pattern_search.parse_repeats('(5,6)') == (5, 6)
+
+        with self.assertRaises(ValueError):
+            pattern_search.parse_repeats('(5')
+        with self.assertRaises(ValueError):
+            pattern_search.parse_repeats('(5-C(2)')
+        with self.assertRaisesRegex(ValueError, 'Invalid repeat'):
+            pattern_search.parse_repeats('(5))')
+
+    def test_match_with_next(self):
+        simple_amino = pattern_search.SimpleAmino('A')
+        any_amino = pattern_search.AnyAmino('x', simple_amino)
+        assert any_amino.match_including_following('MAGICHAT')
+        assert any_amino.match_including_following('MAGICHAT').distance == 2
+
+    def test_range_with_optional(self):
+        sequence = 'MAGICHAT'
+        pattern = pattern_search.Pattern('H-A-T-S(0,1)')
+        assert pattern.find(sequence) == 5
