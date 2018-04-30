@@ -1,13 +1,14 @@
 # License: GNU Affero General Public License v3 or later
 # A copy of GNU AGPL v3 should have been included in this software package in LICENSE.txt.
 
-"""A collection of functions for parsing protein motif patterns of a defined format and searching for them in an amino
-    acid sequence.
+"""A collection of functions for parsing protein motif patterns of a
+    defined format and searching for them in an amino acid sequence.
 """
 
-from typing import List, Set, Tuple, Union
+from typing import List, Set, Tuple  # pylint:disable=unused-import
 
-AMINOS = {'A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'V', 'W', 'Y'}
+AMINOS = {'A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K',
+          'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'V', 'W', 'Y'}
 
 
 class Match:
@@ -132,15 +133,15 @@ class Pattern:
         self.head = self.elements[-1]
         assert self.head is not None
 
-    def find(self, sequence: str) -> int:
-        anchor_idx = self.find_anchor(sequence)
+    def find(self, sequence: str, idx: int = 0) -> int:
+        anchor_idx = self.find_anchor(sequence, idx)
         if anchor_idx < 0:
             return -1
         while anchor_idx >= 0:
             matches = self.head.match_including_following(sequence[anchor_idx:])
             if matches:
                 return anchor_idx
-            anchor_idx = self.find_anchor(sequence, anchor_idx+1)
+            anchor_idx = self.find_anchor(sequence, anchor_idx + 1)
         return -1
 
     def find_anchor(self, sequence: str, idx: int = 0) -> int:
@@ -152,6 +153,14 @@ class Pattern:
                 return idx
             idx += 1
         return -1
+
+    def find_all(self, sequence: str) -> List[int]:
+        results = []
+        match = self.find(sequence)
+        while match >= 0:
+            results.append(match)
+            match = self.find(sequence, match + 1)
+        return results
 
 
 def parse_repeats(sequence: str) -> Tuple[int, int]:

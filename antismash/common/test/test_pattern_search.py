@@ -21,6 +21,7 @@ class TestParsePattern(unittest.TestCase):
 
     def test_any_amino(self):
         any_result = pattern_search.AnyAmino('x')
+        assert any_result.max_repeats == 1
         with self.assertRaisesRegex(ValueError, 'Attempting to use defined amino acid as AnyAmino'):
             pattern_search.AnyAmino('A')
 
@@ -210,3 +211,44 @@ class TestParsePattern(unittest.TestCase):
         sequence = 'MAGICHAT'
         pattern = pattern_search.Pattern('H-A-T-S(0,1)')
         assert pattern.find(sequence) == 5
+
+    def test_find_anchor(self):
+        sequence = 'MAGICHAT'
+
+        pattern = pattern_search.Pattern('Y')
+        assert pattern.find_anchor(sequence) == -1
+
+        pattern = pattern_search.Pattern('A')
+        assert pattern.find_anchor(sequence) == 1
+        assert pattern.find_anchor(sequence, 2) == 6
+        assert pattern.find_anchor(sequence, 7) == -1
+
+        # test out of bounds value
+        assert pattern.find_anchor(sequence, 12) == -1
+
+        # test searching from the end
+        assert pattern.find_anchor(sequence, -3) == 6
+        assert pattern.find_anchor(sequence, -1) == -1
+
+    def test_find_all(self):
+        sequence = 'HEYKITTYKITTY'
+        pattern = pattern_search.Pattern('Y')
+        assert pattern.find_all(sequence) == [2, 7, 12]
+
+        pattern = pattern_search.Pattern('K-I-T(2)-Y')
+        assert pattern.find_all(sequence) == [3, 8]
+
+        sequence = 'CATINTHEHAT'
+        pattern = pattern_search.Pattern('x-A-T')
+        assert pattern.find_all(sequence) == [0, 8]
+
+        pattern = pattern_search.Pattern('[CH]-A-T')
+        assert pattern.find_all(sequence) == [0, 8]
+
+        pattern = pattern_search.Pattern('{M}-A-T')
+        assert pattern.find_all(sequence) == [0, 8]
+        # TODO: figure out sequence for checking overlapping matches
+
+        sequence = 'HEEEEY'
+        pattern = pattern_search.Pattern('E(1,4)-Y')
+        assert pattern.find_all(sequence) == [1, 2, 3, 4]
