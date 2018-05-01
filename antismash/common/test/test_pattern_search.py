@@ -190,22 +190,26 @@ class TestParsePattern(unittest.TestCase):
         assert pattern.find(sequence) == 2
 
     def test_parse_repeats(self):
-        assert pattern_search.parse_repeats('') == (1, 1)
-        assert pattern_search.parse_repeats('(5)') == (5, 5)
-        assert pattern_search.parse_repeats('(5,6)') == (5, 6)
+        assert pattern_search.parse_repeats('', 0) == (1, 1)
+        assert pattern_search.parse_repeats('(5)', 0) == (5, 5)
+        assert pattern_search.parse_repeats('(5,6)', 0) == (5, 6)
+
+        assert pattern_search.parse_repeats('A(5,6)', -5) == (5, 6)
 
         with self.assertRaises(ValueError):
-            pattern_search.parse_repeats('(5')
+            pattern_search.parse_repeats('(5', 0)
         with self.assertRaises(ValueError):
-            pattern_search.parse_repeats('(5-C(2)')
+            pattern_search.parse_repeats('(5-C(2)', 0)
         with self.assertRaisesRegex(ValueError, 'Invalid repeat'):
-            pattern_search.parse_repeats('(5))')
+            pattern_search.parse_repeats('(5))', 0)
 
     def test_match_with_next(self):
         simple_amino = pattern_search.SimpleAmino('A')
         any_amino = pattern_search.AnyAmino('x', simple_amino)
         assert any_amino.match_including_following('MAGICHAT')
         assert any_amino.match_including_following('MAGICHAT').distance == 2
+
+        assert any_amino.match_including_following('MAGICHAT', 5)
 
     def test_range_with_optional(self):
         sequence = 'MAGICHAT'

@@ -37,22 +37,22 @@ class Element:
     def match(self, sequence: str) -> Match:
         raise NotImplementedError('Missing match implementation')
 
-    def match_including_following(self, sequence: str) -> Match:
-        for repeat in range(self.max_repeats, self.min_repeats - 1, -1):
+    def match_including_following(self, sequence: str, offset: int = 0) -> Match:  # TODO: make findall-ified copy
+        for repeat in range(self.max_repeats, self.min_repeats - 1, -1):  # start with highest number repeats: greedy
             if repeat:
-                if len(sequence) < repeat:
-                    continue
+                if (len(sequence) - offset) < repeat:  # if repeats are longer than remaining sequence...
+                    continue  # ...try the next lowest number of repeats
                 matches = True
-                for char in sequence[:repeat]:
-                    match = self.match(char)
+                for idx in range(offset, offset + repeat):
+                    match = self.match(sequence[idx])
                     matches = matches and match
-                if not matches:
-                    continue
+                if not matches:  # if no match was found for the current number of repeats...
+                    continue  # ...try the next lowest number of repeats
             if self.next_element:
-                nextmatch = self.next_element.match_including_following(sequence[repeat:])
-            else:
+                nextmatch = self.next_element.match_including_following(sequence, offset + repeat)
+            else:  # if there is no next element, current element is the end of the "chain", no further search needed
                 return Match(True, repeat)
-            if nextmatch:
+            if nextmatch:  # since Match instances are evaluated as bool here
                 return Match(True, repeat + nextmatch.distance)
         return Match(False)
 
@@ -62,7 +62,7 @@ class SimpleAmino(Element):
         if element[0] not in AMINOS:
             raise ValueError('Invalid amino acid')
         self.amino = element[0]
-        min_repeats, max_repeats = parse_repeats(element[1:])
+        min_repeats, max_repeats = parse_repeats(element, 1)
         super().__init__(min_repeats, max_repeats, next_element)
 
     def match(self, sequence: str) -> Match:
@@ -77,7 +77,7 @@ class AnyAmino(Element):
     def __init__(self, element: str, next_element: Element = None) -> None:
         if element[0] != 'x':
             raise ValueError('Attempting to use defined amino acid as AnyAmino')
-        min_repeats, max_repeats = parse_repeats(element[1:])
+        min_repeats, max_repeats = parse_repeats(element, 1)
         super().__init__(min_repeats, max_repeats, next_element)
 
     def match(self, sequence: str) -> Match:
@@ -138,7 +138,7 @@ class Pattern:
         if anchor_idx < 0:
             return -1
         while anchor_idx >= 0:
-            matches = self.head.match_including_following(sequence[anchor_idx:])
+            matches = self.head.match_including_following(sequence, anchor_idx)
             if matches:
                 return anchor_idx
             anchor_idx = self.find_anchor(sequence, anchor_idx + 1)
@@ -149,12 +149,12 @@ class Pattern:
         if idx < 0:
             idx = length + idx
         while idx < length:
-            if self.head.match(sequence[idx:]):
+            if self.head.match(sequence[idx]):
                 return idx
             idx += 1
         return -1
 
-    def find_all(self, sequence: str) -> List[int]:
+    def find_all(self, sequence: str) -> List[int]:  # TODO: is just find from offset, implement *real* findall
         results = []
         match = self.find(sequence)
         while match >= 0:
@@ -163,13 +163,15 @@ class Pattern:
         return results
 
 
-def parse_repeats(sequence: str) -> Tuple[int, int]:
-    if not sequence:
+def parse_repeats(sequence: str, offset: int) -> Tuple[int, int]:
+    #if not sequence[offset:]:
+    #    return 1, 1
+    if (len(sequence) - 1) < offset:
         return 1, 1
-    if not sequence.startswith("(") or not sequence.endswith(")"):
+    if sequence[offset] != "(" or not sequence.endswith(")"):
         raise ValueError("Brackets do not match")
     try:
-        repeats = [int(number) for number in (sequence[1:-1]).split(",")]
+        repeats = [int(number) for number in (sequence[offset + 1:-1]).split(",")]
     except ValueError:
         raise ValueError("Invalid repeat: %s" % sequence)
     if not 1 <= len(repeats) <= 2:
@@ -191,7 +193,7 @@ def parse_options(sequence: str, start: str, end: str) -> Tuple[Set[str], int, i
         idx += 1
     if idx == len(sequence):
         raise ValueError("Brackets do not match")
-    min_repeats, max_repeats = parse_repeats(sequence[idx+1:])
+    min_repeats, max_repeats = parse_repeats(sequence, idx+1)
     if not options:
         raise ValueError("No valid options provided")
     return options, min_repeats, max_repeats
