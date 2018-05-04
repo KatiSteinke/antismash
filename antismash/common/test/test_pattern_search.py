@@ -64,6 +64,24 @@ class TestParsePattern(unittest.TestCase):
         with self.assertRaises(ValueError):
             pattern_search.Pattern('*.')
 
+    def test_parse_repeats(self):
+        assert pattern_search.parse_repeats('', 0) == (1, 1)
+        assert pattern_search.parse_repeats('(5)', 0) == (5, 5)
+        assert pattern_search.parse_repeats('(5,6)', 0) == (5, 6)
+
+        assert pattern_search.parse_repeats('A(5,6)', -5) == (5, 6)
+
+        with self.assertRaises(ValueError):
+            pattern_search.parse_repeats('(5', 0)
+        with self.assertRaises(ValueError):
+            pattern_search.parse_repeats('(5-C(2)', 0)
+        with self.assertRaisesRegex(ValueError, 'Invalid repeat'):
+            pattern_search.parse_repeats('(5))', 0)
+        with self.assertRaises(ValueError):
+            pattern_search.parse_repeats('(5,6,8)', 0)
+
+
+class TestFindSimple(unittest.TestCase):
     def test_find(self):
         sequence = 'MAGICHAT'
         pattern = pattern_search.Pattern('Y.')
@@ -82,6 +100,33 @@ class TestParsePattern(unittest.TestCase):
 
         assert pattern.find('') == -1
 
+    def test_find_range_simple(self):
+        sequence = 'MYKITTYYYY'
+
+        pattern = pattern_search.Pattern('Y(1,2).')
+        assert pattern.find(sequence) == 1
+
+        pattern = pattern_search.Pattern('Y(2,4).')
+        assert pattern.find(sequence) == 6
+
+        pattern = pattern_search.Pattern('T(2,3)-Y.')
+        assert pattern.find(sequence) == 4
+
+    def test_find_optional_simple(self):
+        sequence = 'MYKITTYYYY'
+        pattern = pattern_search.Pattern('T-Y(0,1).')
+        assert pattern.find(sequence) == 4
+
+        pattern = pattern_search.Pattern('K-Y(0,1)-I.')
+        assert pattern.find(sequence) == 2
+
+    def test_optional_at_end(self):
+        sequence = 'MAGICHAT'
+        pattern = pattern_search.Pattern('H-A-T-S(0,1).')
+        assert pattern.find(sequence) == 5
+
+
+class TestFindAny(unittest.TestCase):
     def test_find_any(self):
         sequence = 'MAGICHAT'
         pattern = pattern_search.Pattern('x.')
@@ -103,12 +148,31 @@ class TestParsePattern(unittest.TestCase):
         assert pattern.find('AC') == -1
         assert pattern.find(sequence) == 0
 
-
         # three-letter combinations:
         pattern = pattern_search.Pattern('x-A-x.')
         assert pattern.find(sequence) == 0
         assert pattern.find('A') == -1
 
+    def test_find_any_repeats(self):
+        sequence = 'MAGICHAT'
+
+        pattern = pattern_search.Pattern('M-x-x-x-C.')
+        assert pattern.find(sequence) == 0
+
+        pattern = pattern_search.Pattern('M-x(3)-C.')
+        assert pattern.find(sequence) == 0
+
+    def test_find_range_any(self):
+        sequence = 'MYKITTYYYY'
+
+        pattern = pattern_search.Pattern('x(2,3).')
+        assert pattern.find(sequence) == 0
+
+        pattern = pattern_search.Pattern('K-x(0,1)-I.')
+        assert pattern.find(sequence) == 2
+
+
+class TestFindMultiple(unittest.TestCase):
     def test_find_multiple(self):
         sequence = 'MAGICHAT'
         # simplest but inefficient: one acceptable amino acid
@@ -125,6 +189,21 @@ class TestParsePattern(unittest.TestCase):
         assert pattern.find('CAT') == 0
         assert pattern.find('KITTY') == -1
 
+    def test_find_multiple_repeats(self):
+        sequence = 'MAGICHAT'
+
+        pattern = pattern_search.Pattern('[AT](2).')
+        assert pattern.find(sequence) == 6
+        assert pattern.find('A') == -1
+
+    def test_find_range_multiple(self):
+        sequence = 'MYKITTYYYY'
+
+        pattern = pattern_search.Pattern('[TY](2,3).')
+        assert pattern.find(sequence) == 4
+
+
+class TestFindNegated(unittest.TestCase):
     def test_find_negated(self):
         sequence = 'MAGICHAT'
         pattern = pattern_search.Pattern('{A}.')
@@ -137,83 +216,17 @@ class TestParsePattern(unittest.TestCase):
         assert pattern.find('MAGIC') == -1
         assert pattern.find('GAMMA') == -1
 
-    def test_find_any_repeats(self):
-        sequence = 'MAGICHAT'
-
-        pattern = pattern_search.Pattern('M-x-x-x-C.')
-        assert pattern.find(sequence) == 0
-
-        pattern = pattern_search.Pattern('M-x(3)-C.')
-        assert pattern.find(sequence) == 0
-
-    def test_find_multiple_repeats(self):
-        sequence = 'MAGICHAT'
-
-        pattern = pattern_search.Pattern('[AT](2).')
-        assert pattern.find(sequence) == 6
-        assert pattern.find('A') == -1
-
     def test_find_negated_repeats(self):
         pattern = pattern_search.Pattern('{A}(3).')
         assert pattern.find('BB') == -1
 
-    def test_find_range(self):
+    def test_find_range_negated(self):
         sequence = 'MYKITTYYYY'
-
-        pattern = pattern_search.Pattern('Y(1,2).')
-        assert pattern.find(sequence) == 1
-
-        pattern = pattern_search.Pattern('Y(2,4).')
-        assert pattern.find(sequence) == 6
-
-        pattern = pattern_search.Pattern('T(2,3)-Y.')
-        assert pattern.find(sequence) == 4
-
-        pattern = pattern_search.Pattern('[TY](2,3).')
-        assert pattern.find(sequence) == 4
-
         pattern = pattern_search.Pattern('{MY}(2,3).')
         assert pattern.find(sequence) == 2
 
-        pattern = pattern_search.Pattern('x(2,3).')
-        assert pattern.find(sequence) == 0
 
-        pattern = pattern_search.Pattern('T-Y(0,1).')
-        assert pattern.find(sequence) == 4
-
-        pattern = pattern_search.Pattern('K-Y(0,1)-I.')
-        assert pattern.find(sequence) == 2
-
-        pattern = pattern_search.Pattern('K-x(0,1)-I.')
-        assert pattern.find(sequence) == 2
-
-    def test_parse_repeats(self):
-        assert pattern_search.parse_repeats('', 0) == (1, 1)
-        assert pattern_search.parse_repeats('(5)', 0) == (5, 5)
-        assert pattern_search.parse_repeats('(5,6)', 0) == (5, 6)
-
-        assert pattern_search.parse_repeats('A(5,6)', -5) == (5, 6)
-
-        with self.assertRaises(ValueError):
-            pattern_search.parse_repeats('(5', 0)
-        with self.assertRaises(ValueError):
-            pattern_search.parse_repeats('(5-C(2)', 0)
-        with self.assertRaisesRegex(ValueError, 'Invalid repeat'):
-            pattern_search.parse_repeats('(5))', 0)
-
-    def test_match_with_next(self):
-        simple_amino = pattern_search.SimpleAmino('A')
-        any_amino = pattern_search.AnyAmino('x', simple_amino)
-        assert any_amino.match_including_following('MAGICHAT')
-        assert any_amino.match_including_following('MAGICHAT').distance == 2
-
-        assert any_amino.match_including_following('MAGICHAT', 5)
-
-    def test_range_with_optional(self):
-        sequence = 'MAGICHAT'
-        pattern = pattern_search.Pattern('H-A-T-S(0,1).')
-        assert pattern.find(sequence) == 5
-
+class TestTermini(unittest.TestCase):
     def test_termini(self):
         sequence = 'MAGICHAT'
         pattern = pattern_search.Pattern('<M.')
@@ -236,12 +249,20 @@ class TestParsePattern(unittest.TestCase):
         pattern = pattern_search.Pattern('<M(3,4).')
         assert pattern.find(sequence) == 0
 
+    def test_nterm_bad_offset(self):
+        assert not pattern_search.NTerminalAmino('<M').match('MAGICHAT', -1)
+
+    def test_cterm_bad_offset(self):
+        assert not pattern_search.CTerminalAmino('T>').match('MAGICHAT', -1)
+
+    def test_invalid_ctermini(self):
         with self.assertRaisesRegex(ValueError, 'Invalid pattern'):
             pattern_search.Pattern('A>-T.')
 
         with self.assertRaisesRegex(ValueError, 'Invalid pattern'):
             pattern_search.Pattern('A>-T>.')
 
+    def test_invalid_ntermini(self):
         with self.assertRaisesRegex(ValueError, 'Invalid pattern'):
             pattern_search.Pattern('<M-<A.')
 
@@ -256,7 +277,7 @@ class TestParsePattern(unittest.TestCase):
     def test_amino_or_cterminus_miss(self):
         pattern = pattern_search.Pattern('A-[M>].')
         assert pattern.find('MAGICHAT') == -1
-        assert len(pattern.find_all('MAGICHAT')) == 0
+        assert not pattern.find_all('MAGICHAT')
 
     def test_amino_or_cterminus_hit_multiple(self):
         pattern = pattern_search.Pattern('A-[GT>].')
@@ -275,13 +296,26 @@ class TestParsePattern(unittest.TestCase):
         assert pattern.find('MAGICHAT') == 7
         assert len(pattern.find_all('MAGICHAT')) == 1
 
+    def test_invalid_optional_or_cterm(self):
         with self.assertRaises(ValueError):
             pattern_search.Pattern('A>-[T>].')
+
         with self.assertRaises(ValueError):
             pattern_search.Pattern('A>-C-[T>].')
-        with self.assertRaises(ValueError):
-            pattern_search.Pattern('A>-C.')
 
+
+class TestMatchWithFollowing(unittest.TestCase):
+    def test_match_with_next(self):
+        simple_amino = pattern_search.SimpleAmino('A')
+        any_amino = pattern_search.AnyAmino('x', simple_amino)
+        assert any_amino.match_including_following('MAGICHAT')
+
+        assert any_amino.match_including_following('MAGICHAT').distance == 2
+
+        assert any_amino.match_including_following('MAGICHAT', 5)
+
+
+class TestMatchAll(unittest.TestCase):
     def test_match_all_lengths_12(self):
         sequence = 'MAAGGIC'
         multiple_as = pattern_search.SimpleAmino('A(1,2)', pattern_search.SimpleAmino('G(1,2)'))
@@ -306,13 +340,21 @@ class TestParsePattern(unittest.TestCase):
         result = pattern_search.Pattern('M(1,2)-A.').head.match_all_possible(sequence)
         assert len(result) == 1
 
-        result = pattern_search.Pattern('M(1,2)-A.').find_all(sequence)
-        assert len(result) == 2
-
     def test_leading_multiple_repeats(self):
         sequence = 'MMAGIC'
         result = pattern_search.Pattern('M(1,2)-A(0,1).').head.match_all_possible(sequence)
         assert len(result) == 3
+
+
+class TestFindAll(unittest.TestCase):
+    def test_find_all_leading_repeat(self):
+        sequence = 'MMAGIC'
+
+        result = pattern_search.Pattern('M(1,2)-A.').find_all(sequence)
+        assert len(result) == 2
+
+    def test_find_all_leading_multiple_repeats(self):
+        sequence = 'MMAGIC'
 
         result = pattern_search.Pattern('M(1,2)-A(0,1).').find_all(sequence)
         assert len(result) == 5

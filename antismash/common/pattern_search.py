@@ -28,7 +28,7 @@ class Match:
         return self.hit
 
     def __repr__(self) -> str:
-            return str(self)
+        return str(self)
 
     def __str__(self) -> str:
         if not self.hit:
@@ -116,7 +116,6 @@ class SimpleAmino(Element):
         if element[0] not in AMINOS:
             raise ValueError('Invalid amino acid')
         self.amino = element[0]
-        self.optional_c_terminus = False
         min_repeats, max_repeats = parse_repeats(element, 1)
         super().__init__(min_repeats, max_repeats, next_element)
 
@@ -134,7 +133,6 @@ class NTerminalAmino(Element):
         if element[1] not in AMINOS:
             raise ValueError('Invalid amino acid')
         self.amino = element[1]
-        self.optional_c_terminus = False
         min_repeats, max_repeats = parse_repeats(element, 2)
         super().__init__(min_repeats, max_repeats, next_element)
 
@@ -152,8 +150,7 @@ class CTerminalAmino(Element):
         if element[0] not in AMINOS:
             raise ValueError('Invalid amino acid')
         self.amino = element[0]
-        self.optional_c_terminus = False  # weird solution, rename...
-        min_repeats, max_repeats = parse_repeats(element.strip('>'), 1)  # TODO: find actual syntax example
+        min_repeats, max_repeats = parse_repeats(element.strip('>'), 1)
         super().__init__(min_repeats, max_repeats, next_element)
 
     def match(self, sequence: str, offset: int = 0) -> Match:
@@ -170,7 +167,6 @@ class AnyAmino(Element):
         if element[0] != 'x':
             raise ValueError('Attempting to use defined amino acid as AnyAmino')
         min_repeats, max_repeats = parse_repeats(element, 1)
-        self.optional_c_terminus = False
         super().__init__(min_repeats, max_repeats, next_element)
 
     def match(self, sequence: str, offset: int = 0) -> Match:
@@ -192,7 +188,8 @@ class MultipleAmino(Element):
         return Match(sequence[offset] in self.options, 1)
 
     def __str__(self) -> str:
-        return "MultipleAmino(%s%s)(%d,%d)" % (self.options, ">" if self.optional_c_terminus else "", self.min_repeats, self.max_repeats)
+        return "MultipleAmino(%s%s)(%d,%d)" % (self.options, ">" if self.optional_c_terminus else "",
+                                               self.min_repeats, self.max_repeats)
 
 
 class NegatedAmino(Element):
@@ -253,7 +250,6 @@ class Pattern:
                 break
         return -1
 
-
     def find_all(self, sequence: str) -> List[MatchLocation]:
         results = []
         index = 0
@@ -281,7 +277,7 @@ def parse_repeats(sequence: str, offset: int) -> Tuple[int, int]:
     return repeats[0], repeats[1]
 
 
-def parse_options(sequence: str, start: str, end: str) -> Tuple[Set[str], int, int, bool]:  # TODO: solve that more nicely?
+def parse_options(sequence: str, start: str, end: str) -> Tuple[Set[str], int, int, bool]:  # TODO: make class!
     if sequence[0] != start:
         raise ValueError("Brackets do not match")
     options = set()  # type: Set[str]
