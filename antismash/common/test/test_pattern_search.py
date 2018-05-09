@@ -249,11 +249,32 @@ class TestTermini(unittest.TestCase):
         pattern = pattern_search.Pattern('<M(3,4).')
         assert pattern.find(sequence) == 0
 
-    def test_nterm_bad_offset(self):
-        assert not pattern_search.NTerminalAmino('<M').match('MAGICHAT', -1)
+        pattern = pattern_search.Pattern('Y(2,3)>.')
+        assert pattern.find('KITTYYY') == 4
 
-    def test_cterm_bad_offset(self):
-        assert not pattern_search.CTerminalAmino('T>').match('MAGICHAT', -1)
+    def test_any_end(self):
+        pattern = pattern_search.Pattern('A-x(1,2)>.')
+        assert pattern.find('MAGICHAT') == 6
+
+    def test_any_start(self):
+        pattern = pattern_search.Pattern('<M(1,2).')
+        assert pattern.find('MAGICHAT') == 0
+
+    def multiple_start(self):
+        pattern = pattern_search.Pattern('<[MA].')
+        assert pattern.find('MAGICHAT') == 0
+
+    def test_start_and_end(self):
+        pattern = pattern_search.Pattern('<A>.')
+        assert pattern.head.nterm
+        assert pattern.head.cterm
+        assert pattern.find('A') == 0
+        assert pattern.find('AHAT') == -1
+
+    def test_invalid_amino_start_end(self):
+        with self.assertRaises(ValueError):
+            pattern = pattern_search.Pattern('<AA>.')
+            print(pattern.elements)
 
     def test_invalid_ctermini(self):
         with self.assertRaisesRegex(ValueError, 'Invalid pattern'):
@@ -366,12 +387,24 @@ class TestFindAll(unittest.TestCase):
 
     def test_find_all_start(self):
         sequence = 'TAAATAAAATA'
+        pattern = pattern_search.Pattern('<T.')
+        assert len(pattern.find_all(sequence)) == 1
+
         pattern = pattern_search.Pattern('<T-A(0,3).')
         assert len(pattern.find_all(sequence)) == 4
 
     def test_find_all_end(self):
+        sequence = 'TAAATAAAATA'
+        pattern = pattern_search.Pattern('A>.')
+        assert len(pattern.find_all(sequence)) == 1
+
         pattern = pattern_search.Pattern('A(0,3)-T-A>.')
         assert len(pattern.find_all('TAAATAAAATA')) == 4
+
+    def test_multiple_end(self):
+        sequence = 'MAGICHAT'
+        pattern = pattern_search.Pattern('[AT]>.')
+        assert len(pattern.find_all(sequence)) == 1
 
     def test_find_all_basic_types(self):
         sequence = 'MAGICHAT'
@@ -388,8 +421,8 @@ class TestFindAll(unittest.TestCase):
         pattern = pattern_search.Pattern('M-A-G-I-C.')
         result = pattern.find_all('MAGICHAT')
         assert result[0].end == 5
-        assert result[0].length == 5
+        assert len(result[0]) == 5
 
         result = pattern.find_all('AMAGICHAT')
         assert result[0].end == 6
-        assert result[0].length == 5
+        assert len(result[0]) == 5
