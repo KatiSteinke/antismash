@@ -47,6 +47,7 @@ class MatchLocation:
         protein sequence.
     """
     def __init__(self, start: int, end: int) -> None:
+        assert start <= end  # start can be equal to end when a range of repeats includes 0
         self.start = start
         self.end = end
 
@@ -67,22 +68,36 @@ class Element:
         self.min_repeats = min_repeats
         self.max_repeats = max_repeats
         self.next_element = next_element
+        self.nterm = nterm
         if next_element and next_element.nterm:
             raise ValueError('Invalid pattern')
         if cterm and next_element:
             raise ValueError('Invalid pattern')
-        self.nterm = nterm
         self.cterm = cterm
 
     def match(self, sequence: str, offset: int = 0) -> Match:
         raise NotImplementedError('Missing match implementation')
 
     def offset_ok(self, sequence: str, offset: int) -> bool:
+        """Check if the given offset is a valid offset in the sequence to search,
+            and valid for the Element if it is N- or C-terminal.
+
+            Arguments:
+                sequence: the amino acid sequence examined
+                offset: the position in the sequence to check
+
+            Returns:
+                True if the offset is valid,
+                False if the offset is outside the sequence,
+                too far away from the start in an N-terminal Element,
+                or too far away from the end in a C-terminal Element.
+
+        """
         if not 0 <= offset < len(sequence):
             return False
-        if self.nterm and offset >= self.max_repeats:
+        if self.nterm and offset >= self.max_repeats:  # to allow for repeats
             return False
-        if self.cterm and offset < len(sequence) - self.max_repeats:
+        if self.cterm and offset < len(sequence) - self.max_repeats:  # to allow for repeats
             return False
         return True
 
@@ -99,14 +114,17 @@ class Element:
                   True and the amount of repeats found if this is the last Element in the Pattern,
                   True and the distance of this and all following Elements otherwise.
         """
+
         for repeat in range(self.max_repeats, self.min_repeats - 1, -1):  # start with highest number repeats: greedy
-            if repeat:
+            if repeat:  # if repeat isn't 0
+                if not self.offset_ok(sequence, offset):  # only necessary if repeats > 0
+                    continue
                 if (len(sequence) - offset) < repeat - 1:  # if repeats are longer than remaining sequence...
                     continue  # ...try the next lowest number of repeats
                 matches = True
                 for idx in range(offset, offset + repeat):
                     match = self.match(sequence, idx)
-                    matches = matches and match
+                    matches = matches and bool(match)
                 if not matches:  # if no match was found for the current number of repeats...
                     continue  # ...try the next lowest number of repeats
             if self.next_element:
@@ -129,7 +147,9 @@ class Element:
                 A list of all MatchLocations for the different versions of the Pattern that
                 match the sequence. The start is always the offset, the end varies.
         """
-        results = []
+        results = []  # type: List[MatchLocation]
+        if self.nterm and offset != 0:  # N-terminal amino needs to be at the start of the sequence
+            return results  # so if it isn't, return an empty list
         for repeat in range(self.max_repeats, self.min_repeats - 1, -1):  # start with highest number repeats: greedy
             if repeat:
                 if (len(sequence) - offset) < repeat - 1:  # if repeats are longer than remaining sequence...
@@ -137,7 +157,7 @@ class Element:
                 matches = True
                 for idx in range(offset, offset + repeat):
                     match = self.match(sequence, idx)
-                    matches = matches and match
+                    matches = matches and bool(match)
                     if not matches:
                         break
                 if not matches:
@@ -148,16 +168,19 @@ class Element:
                     newmatch = [MatchLocation(offset, location.end) for location in nextmatch]
                     results.extend(newmatch)
             else:
-                if offset + repeat <= len(sequence):
-                    results.append(MatchLocation(offset, offset + repeat))
+                match_location = MatchLocation(offset, offset + repeat)
+                if self.cterm and offset + repeat == len(sequence):  # must end at the end of the sequence if it's cterm
+                    results.append(match_location)
+                elif not self. cterm and offset + repeat <= len(sequence):  # can end at the end of the sequence
+                    results.append(match_location)
                 # otherwise covered since it's end terminal that would have the
                 # same coordinates
-        for match in results:
-            assert match.end <= len(sequence), "overlong slice: %s" % match
+        for match_loc in results:
+            assert match_loc.end <= len(sequence), "overlong slice: %s" % match_loc
         return results
 
 
-class SimpleAmino(Element):  # TODO: logic for C terminus/N terminus parsing here! Can't have N as a next or a C with a next != None
+class SimpleAmino(Element):
     """An Element representing only one specific acceptable amino acid,
         as well as the times it must be repeated, and the next Element in
         the Pattern.
@@ -185,7 +208,6 @@ class SimpleAmino(Element):  # TODO: logic for C terminus/N terminus parsing her
 
     def __str__(self) -> str:
         return "SimpleAmino(%s)(%d,%d)" % (self.amino, self.min_repeats, self.max_repeats)
-
 
 
 class AnyAmino(Element):
@@ -229,7 +251,14 @@ class MultipleAmino(Element):
         min_repeats = parsed_options.min_repeats
         max_repeats = parsed_options.max_repeats
         self.optional_c_terminus = parsed_options.optional_cterm
+        if self.optional_c_terminus and cterm:
+            raise ValueError('MultipleAmino can only have one of optional and fixed C terminus')
         super().__init__(min_repeats, max_repeats, next_element, nterm, cterm)
+
+    def offset_ok(self, sequence: str, offset: int) -> bool:
+        if self.optional_c_terminus and offset == len(sequence):
+            return True
+        return super().offset_ok(sequence, offset)
 
     def match(self, sequence: str, offset: int = 0) -> Match:
         """Attempt to match the acceptable amino acids in an amino acid
@@ -243,8 +272,8 @@ class MultipleAmino(Element):
                 A Match: True if the amino acid at the given position is an acceptable amino acid,
                 False if it isn't or the sequence is shorter than the specified offset.
         """
-        if not 0 <= offset < len(sequence):
-            return Match(self.optional_c_terminus and 0 <= offset <= len(sequence), 0)
+        if self.optional_c_terminus and offset >= len(sequence):
+            return Match(True, 0)
         return Match(self.offset_ok(sequence, offset) and sequence[offset] in self.options, 1)
 
     def __str__(self) -> str:
@@ -305,9 +334,9 @@ class Pattern:
     def __init__(self, pattern_string: str) -> None:
         assert pattern_string.endswith('.')
         self.elements = [None]  # type: List[Element]
-        for part in pattern_string.strip('.').split('-')[::-1]:
-            # preprocess part, remove <>
-            nterm, part, cterm = parse_terminus(part)
+        for part in pattern_string.strip('.').split('-')[::-1]:  # process elements of pattern in reverse
+            # so the next Element for each new Element already exists
+            nterm, part, cterm = parse_terminus(part)  # preprocess part, remove <>
             if part[0] in AMINOS:
                 self.elements.append(SimpleAmino(part, self.elements[-1], nterm, cterm))
             elif part[0] == 'x':
@@ -334,9 +363,7 @@ class Pattern:
         anchor_idx = 0
         while anchor_idx < len(sequence):
             matches = self.head.match_including_following(sequence, anchor_idx)
-            print(anchor_idx)
             if matches:
-                print('Match found at', anchor_idx)
                 return anchor_idx
             anchor_idx += 1
         return -1
@@ -383,11 +410,10 @@ def parse_repeats(sequence: str, offset: int) -> Tuple[int, int]:
             minimum and maximum are identical if there is only one value.
             If there are no repeats, returns 1, 1.
     """
-    print(sequence, offset)
-    if (len(sequence) - 1) < offset:
+    if (len(sequence) - 1) < offset:  # no information on repeats
         return 1, 1
     if sequence[offset] != "(" or not sequence.endswith(")"):
-        raise ValueError("Brackets do not match")
+        raise ValueError("Invalid pattern: %s" % sequence)
     try:
         repeats = [int(number) for number in (sequence[offset + 1:-1]).split(",")]
     except ValueError:
@@ -404,10 +430,9 @@ def parse_options(sequence: str, start: str, end: str) -> AmbiguityOptions:
         Element from a string.
 
         Arguments:
-            sequence: the string representation of the Element
+            sequence: the string specifying the element
             start: the opening bracket ([ or {)
             end: the closing bracket (] or })
-            offset: the position at which the information about the options starts
 
         Returns:
             The set of amino acids specified by the string, as well as the number of repeats
@@ -439,8 +464,20 @@ def parse_options(sequence: str, start: str, end: str) -> AmbiguityOptions:
 
 
 def parse_terminus(element: str) -> Tuple[bool, str, bool]:
-    cterm = False
+    """Preprocess an element of a pattern, identify if it is N-terminal or C-terminal
+        and slice off the respective identifiers if necessary.
+
+        Arguments:
+            element: the string specifying the element
+
+        Returns:
+            A tuple containing:
+            - whether or not the element is N-terminal
+            - the element, minus any markers for N- or C terminus
+            - whether or not the element is C-terminal
+    """
     nterm = False
+    cterm = False
     if element.startswith('<'):
         nterm = True
         element = element[1:]

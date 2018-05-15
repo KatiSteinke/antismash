@@ -31,7 +31,7 @@ class TestParsePattern(unittest.TestCase):
             pattern_search.MultipleAmino('[AC')
         with self.assertRaisesRegex(ValueError, 'Invalid amino acid'):
             pattern_search.MultipleAmino('[AB]')
-        with self.assertRaisesRegex(ValueError, 'Brackets do not match'):  # TODO: better error message...
+        with self.assertRaisesRegex(ValueError, 'Invalid pattern'):
             pattern_search.MultipleAmino('[AC]A')
         with self.assertRaisesRegex(ValueError, 'Brackets do not match'):
             pattern_search.MultipleAmino('{AC]')
@@ -45,7 +45,7 @@ class TestParsePattern(unittest.TestCase):
             pattern_search.NegatedAmino('{AC')
         with self.assertRaisesRegex(ValueError, 'Invalid amino acid'):
             pattern_search.NegatedAmino('{AB}')
-        with self.assertRaisesRegex(ValueError, 'Brackets do not match'):
+        with self.assertRaisesRegex(ValueError, 'Invalid pattern'):
             pattern_search.NegatedAmino('{AC}A')
         with self.assertRaisesRegex(ValueError, 'Brackets do not match'):
             pattern_search.NegatedAmino('[AC}')
@@ -79,6 +79,12 @@ class TestParsePattern(unittest.TestCase):
             pattern_search.parse_repeats('(5))', 0)
         with self.assertRaises(ValueError):
             pattern_search.parse_repeats('(5,6,8)', 0)
+
+    def test_parse_termini(self):
+        assert pattern_search.parse_terminus('A') == (False, 'A', False)
+        assert pattern_search.parse_terminus('<A') == (True, 'A', False)
+        assert pattern_search.parse_terminus('A>') == (False, 'A', True)
+        assert pattern_search.parse_terminus('<A>') == (True, 'A', True)
 
 
 class TestFindSimple(unittest.TestCase):
@@ -290,6 +296,10 @@ class TestTermini(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Invalid pattern'):
             pattern_search.Pattern('M-<A.')
 
+    def test_invalid_cterm_multiple(self):
+        with self.assertRaisesRegex(ValueError, 'MultipleAmino can only have one of optional and fixed C terminus'):
+            pattern_search.Pattern('[A>]>.')
+
     def test_amino_or_cterminus_hit(self):
         sequence = 'MAGICHAT'
         pattern = pattern_search.Pattern('T-[T>].')
@@ -323,6 +333,105 @@ class TestTermini(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             pattern_search.Pattern('A>-C-[T>].')
+
+
+class TestOffsetCheck(unittest.TestCase):
+    def test_offset_ok_element(self):
+        sequence = 'MAGICHAT'
+
+        simple_amino = pattern_search.SimpleAmino('A')
+        assert simple_amino.offset_ok(sequence, 0)
+        assert not simple_amino.offset_ok(sequence, 8)
+
+        simple_with_repeats = pattern_search.SimpleAmino('A(2)')
+        assert simple_with_repeats.offset_ok(sequence, 0)
+        assert not simple_with_repeats.offset_ok(sequence, 8)
+
+    def test_offset_ok_element_nterm(self):
+        sequence = 'MAGICHAT'
+
+        simple_nterm = pattern_search.SimpleAmino('M', nterm=True)
+        assert simple_nterm.offset_ok(sequence, 0)
+        assert not simple_nterm.offset_ok(sequence, 1)
+
+        nterm_with_repeats = pattern_search.SimpleAmino('M(2)', nterm=True)
+        assert nterm_with_repeats.offset_ok(sequence, 0)
+        assert nterm_with_repeats.offset_ok(sequence, 1)
+        assert not nterm_with_repeats.offset_ok(sequence, 2)
+
+        nterm_range = pattern_search.SimpleAmino('M(1,4)', nterm=True)
+        assert nterm_range.offset_ok(sequence, 0)
+        assert nterm_range.offset_ok(sequence, 3)
+        assert not nterm_range.offset_ok(sequence, 4)
+
+    def test_offset_ok_element_cterm(self):
+        sequence = 'MAGICHAT'
+
+        simple_cterm = pattern_search.SimpleAmino('M', cterm=True)
+        assert simple_cterm.offset_ok(sequence, 7)
+        assert not simple_cterm.offset_ok(sequence, 6)
+
+        cterm_with_repeats = pattern_search.SimpleAmino('M(2)', cterm=True)
+        assert cterm_with_repeats.offset_ok(sequence, 7)
+        assert cterm_with_repeats.offset_ok(sequence, 6)
+        assert not cterm_with_repeats.offset_ok(sequence, 2)
+
+        cterm_range = pattern_search.SimpleAmino('M(1,4)', cterm=True)
+        assert cterm_range.offset_ok(sequence, 7)
+        assert cterm_range.offset_ok(sequence, 4)
+        assert not cterm_range.offset_ok(sequence, 0)
+
+    def test_offset_ok_multiple(self):
+        sequence = 'MAGICHAT'
+
+        multiple_plain = pattern_search.MultipleAmino('[MAT]')
+        assert multiple_plain.offset_ok(sequence, 0)
+        assert not multiple_plain.offset_ok(sequence, 8)
+
+        multiple_with_repeat = pattern_search.MultipleAmino('[MAT](2)')
+        assert multiple_with_repeat.offset_ok(sequence, 0)
+        assert not multiple_with_repeat.offset_ok(sequence, 8)
+
+    def test_offset_ok_multiple_nterm(self):
+        sequence = 'MAGICHAT'
+
+        multiple_nterm = pattern_search.MultipleAmino('[MAT]', nterm=True)
+        assert multiple_nterm.offset_ok(sequence, 0)
+        assert not multiple_nterm.offset_ok(sequence, 1)
+
+        multiple_nterm_with_repeat = pattern_search.MultipleAmino('[MAT](2)', nterm=True)
+        assert multiple_nterm_with_repeat.offset_ok(sequence, 0)
+        assert multiple_nterm_with_repeat.offset_ok(sequence, 1)
+        assert not multiple_nterm_with_repeat.offset_ok(sequence, 2)
+
+        multiple_nterm_range = pattern_search.MultipleAmino('[MAT](1,4)', nterm=True)
+        assert multiple_nterm_range.offset_ok(sequence, 0)
+        assert multiple_nterm_range.offset_ok(sequence, 3)
+        assert not multiple_nterm_range.offset_ok(sequence, 4)
+
+    def test_offset_ok_multiple_cterm(self):
+        sequence = 'MAGICHAT'
+
+        multiple_cterm = pattern_search.MultipleAmino('[MAT]', cterm=True)
+        assert multiple_cterm.offset_ok(sequence, 7)
+        assert not multiple_cterm.offset_ok(sequence, 6)
+
+        multiple_cterm_with_repeat = pattern_search.MultipleAmino('[MAT](2)', cterm=True)
+        assert multiple_cterm_with_repeat.offset_ok(sequence, 7)
+        assert multiple_cterm_with_repeat.offset_ok(sequence, 6)
+        assert not multiple_cterm_with_repeat.offset_ok(sequence, 2)
+
+        multiple_cterm_range = pattern_search.MultipleAmino('[MAT](1,4)', cterm=True)
+        assert multiple_cterm_range.offset_ok(sequence, 7)
+        assert multiple_cterm_range.offset_ok(sequence, 4)
+        assert not multiple_cterm_range.offset_ok(sequence, 0)
+
+    def test_offset_ok_optional_cterm(self):
+        sequence = 'MAGICHAT'
+
+        optional_cterm = pattern_search.MultipleAmino('[T>]')
+        assert optional_cterm.offset_ok(sequence, 7)
+        assert optional_cterm.offset_ok(sequence, 8)
 
 
 class TestMatchWithFollowing(unittest.TestCase):
@@ -401,10 +510,46 @@ class TestFindAll(unittest.TestCase):
         pattern = pattern_search.Pattern('A(0,3)-T-A>.')
         assert len(pattern.find_all('TAAATAAAATA')) == 4
 
+    def test_find_all_range_end(self):
+        sequence = 'KITTYYYY'
+        pattern = pattern_search.Pattern('Y(2,5)>.')
+        assert len(pattern.find_all(sequence)) == 3
+
+    def test_find_all_range_start(self):
+        pattern = pattern_search.Pattern('<M(1,3).')
+        assert len(pattern.find_all('MMAGIC')) == 2
+
     def test_multiple_end(self):
         sequence = 'MAGICHAT'
         pattern = pattern_search.Pattern('[AT]>.')
         assert len(pattern.find_all(sequence)) == 1
+
+    def test_multiple_start(self):
+        sequence = 'MAGICHAT'
+        pattern = pattern_search.Pattern('<[MA].')
+        assert len(pattern.find_all(sequence)) == 1
+
+    def test_find_all_range_multi_start(self):
+        assert len(pattern_search.Pattern('<[MA](1,3).').find_all('MAGIC')) == 2
+
+    def test_find_all_range_multi_end(self):
+        assert len(pattern_search.Pattern('[AT](1,3)>.').find_all('MAGICHAT')) == 2
+
+    def test_negated_end(self):
+        sequence = 'MAGICHAT'
+        pattern = pattern_search.Pattern('{D}>.')
+        assert len(pattern.find_all(sequence)) == 1
+
+    def test_negated_start(self):
+        sequence = 'MAGICHAT'
+        pattern = pattern_search.Pattern('<{N}.')
+        assert len(pattern.find_all(sequence)) == 1
+
+    def test_find_all_range_not_start(self):
+        assert len(pattern_search.Pattern('<{G}(1,3).').find_all('MAGIC')) == 2
+
+    def test_find_all_range_not_end(self):
+        assert len(pattern_search.Pattern('{H}(1,3)>.').find_all('MAGICHAT')) == 2
 
     def test_find_all_basic_types(self):
         sequence = 'MAGICHAT'
