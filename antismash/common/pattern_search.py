@@ -322,12 +322,11 @@ class Pattern:
           amino acids all being acceptable in the position (e.g. [MA] matches M and A)
         - one or more one-letter codes encased in curly brackets to represent these
           amino acids not being acceptable in the position (e.g. {M} matches any but M)
-        - < followed by an one-letter code in the beginning of the pattern to represent
-          it must occur in the N-terminus of the sequence
-        - a one-letter code followed by > at the end of the pattern to represent it must
-          occur in the C-terminus of the sequence
-        - alternatively, > inside square brackets to represent the end of the protein or
-          any of the other amino acids specified inside the brackets
+        A pattern beginning with < must occur in the N-terminus of the sequence; a
+        pattern ending in > must occur in the C-terminus. These characters can only
+        occur in the beginning and end of the pattern respectively, with one exception:
+        > inside square brackets represents the end of the protein or any of the other
+        amino acids specified inside the brackets.
         Repeats may be specified for all of these by giving the number of repeats in
         parentheses, either as a single number or a range, e.g. K-I-T(2)-Y(1,3)>.
     """
